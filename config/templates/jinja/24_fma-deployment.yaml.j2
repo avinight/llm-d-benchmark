@@ -38,7 +38,7 @@ spec:
       VLLM_LOGGING_LEVEL: DEBUG
       VLLM_SERVER_DEV_MODE: "1"
       VLLM_USE_V1: "1"
-    options: "--model {{ model.name }} --enable-sleep-mode --no-enable-prefix-caching --load-format auto --gpu-memory-utilization 0.95 --tensor-parallel-size 1"
+    options: "--model {{ model.name }} --enable-sleep-mode --no-enable-prefix-caching --load-format auto --gpu-memory-utilization 0.95 --tensor-parallel-size 2"
     port: 8000
 ---
 apiVersion: fma.llm-d.ai/v1alpha1
@@ -119,12 +119,21 @@ spec:
           # double-book (N launchers + N requesters = 2N GPU requests on an
           # N-GPU node), leaving requesters Pending with Insufficient nvidia.com/gpu.
           volumeMounts:
+          # TEMP (32B TP=2): vLLM tensor-parallel workers talk over a
+          # shared-memory message queue; the default 64Mi /dev/shm makes
+          # NCCL/multiproc crash. Give the launcher a real in-memory /dev/shm.
+          - name: dshm
+            mountPath: /dev/shm
 {% if fma.mountModelVolume %}
           - name: model-cache
             mountPath: {{ fma.modelMountPath }}
             readOnly: False
 {% endif %}
       volumes:
+      - name: dshm
+        emptyDir:
+          medium: Memory
+          sizeLimit: 16Gi
 {% if fma.mountModelVolume %}
       - name: model-cache
         persistentVolumeClaim:
